@@ -5,6 +5,8 @@ import { useSelector } from "react-redux";
 import AOS from "aos";
 import "aos/dist/aos.css";
 import confetti from "canvas-confetti";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import {
   FiPackage,
   FiShoppingBag,
@@ -16,6 +18,7 @@ import {
   FiTruck,
   FiCheckCircle,
   FiShield,
+  FiDownload,
 } from "react-icons/fi";
 import toast from "react-hot-toast";
 import api from "../services/api";
@@ -53,7 +56,6 @@ const Orders = () => {
   const [error, setError] = useState("");
   const [cancellingId, setCancellingId] = useState(null);
 
-  // Track previous order statuses to detect delivery updates.
   const previousStatuses = useRef({});
   const hasLoadedOrders = useRef(false);
 
@@ -100,7 +102,6 @@ const Orders = () => {
         const { data } = await api.get("/orders/myorders");
         const result = Array.isArray(data) ? data : data.orders || [];
 
-        // Only celebrate when a previously loaded order changes to Delivered.
         if (hasLoadedOrders.current) {
           const newlyDelivered = result.some((order) => {
             const previousStatus = previousStatuses.current[order._id];
@@ -112,12 +113,9 @@ const Orders = () => {
             );
           });
 
-          if (newlyDelivered) {
-            celebrateDelivery();
-          }
+          if (newlyDelivered) celebrateDelivery();
         }
 
-        // Save the latest statuses for the next refresh.
         previousStatuses.current = Object.fromEntries(
           result.map((order) => [
             order._id,
@@ -133,9 +131,7 @@ const Orders = () => {
 
         setError(message);
 
-        if (showLoading) {
-          toast.error(message);
-        }
+        if (showLoading) toast.error(message);
       } finally {
         if (showLoading) setLoading(false);
       }
@@ -146,7 +142,6 @@ const Orders = () => {
   useEffect(() => {
     fetchOrders();
 
-    // Check for delivery updates every 30 seconds.
     const intervalId = window.setInterval(() => {
       fetchOrders(false);
     }, 30000);
@@ -154,7 +149,6 @@ const Orders = () => {
     return () => window.clearInterval(intervalId);
   }, [fetchOrders]);
 
-  // Recalculate AOS positions after the list renders.
   useEffect(() => {
     if (!loading) {
       const timer = window.setTimeout(() => AOS.refresh(), 100);
@@ -208,8 +202,6 @@ const Orders = () => {
     });
   };
 
-  // Product subtotal saved in the order.
-  // Fallback supports older orders without itemsPrice.
   const getOrderSubtotal = (order) => {
     if (order.itemsPrice != null) {
       return Number(order.itemsPrice) || 0;
@@ -223,14 +215,11 @@ const Orders = () => {
     }, 0);
   };
 
-  // Use the shipping fee saved when this order was placed.
-  // Do not use the current Admin fee for historical orders.
   const getShippingPrice = (order) => {
     if (order.shippingPrice != null) {
       return Number(order.shippingPrice) || 0;
     }
 
-    // Fallback for orders created before shippingPrice existed.
     return Math.max(
       0,
       (Number(order.totalPrice) || 0) - getOrderSubtotal(order)
@@ -280,6 +269,211 @@ const Orders = () => {
     }
 
     return item.productName || "Product";
+  };
+
+  // Generate and download a PDF invoice.
+  const downloadInvoice = (order) => {
+    try {
+      const doc = new jsPDF();
+
+      const orderId = order._id || "N/A";
+      const orderDate = formatDate(order.createdAt);
+      const status = order.status || "Pending";
+      const items = order.orderItems || [];
+
+      // Header
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.text("INVOICE / ORDER RECEIPT", 14, 22);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text("Order payment and product details", 14, 29);
+
+      // Divider
+      doc.setDrawColor(210);
+      doc.line(14, 34, 196, 34);
+
+      // Order information
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("ORDER DETAILS", 14, 44);
+
+      doc.setFont("helvetica", "normal");
+      doc.text(`Order ID: ${orderId}`, 14, 52);
+      doc.text(`Order Date: ${orderDate}`, 14, 59);
+      doc.text(`Order Status: ${status}`, 14, 66);
+      doc.text(
+        `Payment Method: ${order.paymentMethod || "COD"}`,
+        14,
+        73
+      );
+
+      // Customer information
+      doc.setFont("helvetica", "bold");
+      doc.text("CUSTOMER DETAILS", 115, 44);
+
+      doc.setFont("helvetica", "normal");
+
+      const customerName =
+        order.user?.name ||
+        order.shippingAddress?.fullName ||
+        user?.name ||
+        "Customer";
+
+      const customerEmail =
+        order.user?.useremail ||
+        order.user?.email ||
+        user?.useremail ||
+        user?.email ||
+        "Not provided";
+
+      doc.text(
+        doc.splitTextToSize(`Name: ${customerName}`, 80),
+        115,
+        52
+      );
+
+      doc.text(
+        doc.splitTextToSize(`Email: ${customerEmail}`, 80),
+        115,
+        60
+      );
+
+      // Shipping address (if stored on the order)
+      const address = order.shippingAddress;
+
+      if (address) {
+        const addressText = [
+          address.address,
+          address.addressLine,
+          address.city,
+          address.state,
+          address.postalCode || address.zipCode || address.pincode,
+          address.country,
+        ]
+          .filter(Boolean)
+          .join(", ");
+
+        if (addressText) {
+          doc.text(
+            doc.splitTextToSize(`Address: ${addressText}`, 80),
+            115,
+            68
+          );
+        }
+      }
+
+      // Products table
+      const tableRows = items.map((item, index) => {
+        const quantity = Number(item.quantity) || 0;
+        const unitPrice = Number(item.price) || 0;
+
+        return [
+          index + 1,
+          getProductName(item),
+          quantity,
+          formatPrice(unitPrice),
+          formatPrice(unitPrice * quantity),
+        ];
+      });
+
+      autoTable(doc, {
+        startY: 88,
+        head: [["#", "Product", "Qty", "Unit Price", "Amount"]],
+        body:
+          tableRows.length > 0
+            ? tableRows
+            : [["-", "Product details unavailable", "-", "-", "-"]],
+        theme: "grid",
+        styles: {
+          font: "helvetica",
+          fontSize: 9,
+          cellPadding: 3,
+          overflow: "linebreak",
+          textColor: [35, 35, 35],
+        },
+        headStyles: {
+          fillColor: [25, 25, 25],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        columnStyles: {
+          0: { cellWidth: 10 },
+          1: { cellWidth: "auto" },
+          2: { cellWidth: 15 },
+          3: { cellWidth: 35 },
+          4: { cellWidth: 35 },
+        },
+        margin: { left: 14, right: 14 },
+      });
+
+      // Totals
+      let finalY = doc.lastAutoTable.finalY + 12;
+
+      if (finalY > 255) {
+        doc.addPage();
+        finalY = 25;
+      }
+
+      const subtotal = getOrderSubtotal(order);
+      const shipping = getShippingPrice(order);
+      const total = getFinalTotal(order);
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+
+      doc.text("Product Subtotal:", 125, finalY);
+      doc.text(formatPrice(subtotal), 196, finalY, {
+        align: "right",
+      });
+
+      finalY += 8;
+
+      doc.text("Shipping Fee:", 125, finalY);
+      doc.text(formatPrice(shipping), 196, finalY, {
+        align: "right",
+      });
+
+      finalY += 5;
+      doc.setDrawColor(180);
+      doc.line(125, finalY, 196, finalY);
+
+      finalY += 8;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+
+      doc.text("Final Total:", 125, finalY);
+      doc.text(formatPrice(total), 196, finalY, {
+        align: "right",
+      });
+
+      // Footer on each page
+      const pageCount = doc.internal.getNumberOfPages();
+
+      for (let page = 1; page <= pageCount; page += 1) {
+        doc.setPage(page);
+
+        const pageHeight = doc.internal.pageSize.getHeight();
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(100);
+
+        doc.text(
+          "Thank you for your purchase!",
+          105,
+          pageHeight - 12,
+          { align: "center" }
+        );
+      }
+
+      doc.save(`Invoice-${orderId}.pdf`);
+      toast.success("Invoice downloaded successfully!");
+    } catch (err) {
+      console.error("Invoice download error:", err);
+      toast.error("Unable to generate the invoice. Please try again.");
+    }
   };
 
   if (loading) {
@@ -601,7 +795,7 @@ const Orders = () => {
                     )}
                   </div>
 
-                  {/* Payment, totals, and actions */}
+                  {/* Totals and actions */}
                   <div className="border-t border-neutral-200 bg-neutral-50 p-4 sm:p-6">
                     <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
                       <div className="w-full space-y-2 sm:max-w-sm">
@@ -618,7 +812,6 @@ const Orders = () => {
                           order
                         </p>
 
-                        {/* Price breakdown */}
                         <div className="mt-4 space-y-3 border-t border-neutral-200 pt-4">
                           <div className="flex items-center justify-between gap-4 text-xs">
                             <span className="text-neutral-500">
@@ -649,6 +842,7 @@ const Orders = () => {
                         </div>
                       </div>
 
+                      {/* Order action buttons */}
                       <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:flex sm:flex-wrap">
                         {canCancel && (
                           <button
@@ -672,11 +866,18 @@ const Orders = () => {
                           </button>
                         )}
 
+                        <button
+                          type="button"
+                          onClick={() => downloadInvoice(order)}
+                          className="inline-flex min-h-10 items-center justify-center gap-2 border border-neutral-300 bg-white px-4 py-2 text-xs font-medium text-neutral-800 transition hover:border-black hover:bg-neutral-100 active:scale-95"
+                        >
+                          <FiDownload size={14} />
+                          Download Invoice
+                        </button>
+
                         <Link
                           to={`/order-success/${orderId}`}
-                          className={`group/btn inline-flex min-h-10 items-center justify-center gap-2 bg-black px-4 py-2 text-xs font-medium text-white transition hover:bg-neutral-700 active:scale-95 ${
-                            canCancel ? "" : "min-[420px]:col-span-2"
-                          }`}
+                          className="group/btn inline-flex min-h-10 items-center justify-center gap-2 bg-black px-4 py-2 text-xs font-medium text-white transition hover:bg-neutral-700 active:scale-95"
                         >
                           View order
                           <FiArrowRight
