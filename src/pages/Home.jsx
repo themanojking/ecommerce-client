@@ -300,194 +300,205 @@ export default function Home() {
       </section>
 
       {/* Categories based on available products */}
-      {categories.length > 0 && (
-        <section className="mx-auto max-w-7xl px-5 pb-14 sm:px-8 sm:pb-20 lg:px-12">
-          <div
-            data-aos="fade-up"
-            className="mb-8 flex items-end justify-between"
-          >
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-neutral-500">
-                Find your favourites
-              </p>
-              <h2 className="mt-3 text-3xl font-medium tracking-tight sm:text-4xl">
-                Shop by category
-              </h2>
-            </div>
+      
+{categories.length > 0 && (
+  <section className="mx-auto max-w-7xl px-5 pb-14 sm:px-8 sm:pb-20 lg:px-12">
+    <div
+      data-aos="fade-up"
+      className="mb-8 flex items-end justify-between"
+    >
+      <div>
+        <p className="text-xs uppercase tracking-[0.25em] text-neutral-500">
+          Find your favourites
+        </p>
+        <h2 className="mt-3 text-3xl font-medium tracking-tight sm:text-4xl">
+          Shop by category
+        </h2>
+      </div>
 
+      <Link
+        to="/products"
+        className="hidden items-center gap-2 text-sm underline underline-offset-4 sm:flex"
+      >
+        View all <FiArrowRight />
+      </Link>
+    </div>
+
+    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {categories.map((category, index) => {
+        const categoryProducts = products.filter(
+          (product) => product.category === category
+        );
+
+        return categoryProducts.map((product) => {
+          const inStock =
+            product.isAvailable && Number(product.stock) > 0;
+
+          return (
             <Link
-              to="/products"
-              className="hidden items-center gap-2 text-sm underline underline-offset-4 sm:flex"
+              key={product._id}
+              to={`/products/${product._id}`}
+              data-aos="fade-up"
+              data-aos-delay={index * 100}
+              className="group block min-w-0"
             >
-              View all <FiArrowRight />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-5">
-            {categories.map((category, index) => {
-              const categoryProduct = availableProducts.find(
-                (product) => product.category === category
-              );
-              const image = categoryProduct?.images?.[0];
-
-              return (
-                <Link
-                  key={category}
-                  to={`/products?category=${encodeURIComponent(category)}`}
-                  data-aos="fade-up"
-                  data-aos-delay={index * 120}
-                  className="group relative overflow-hidden bg-neutral-100"
-                >
-                  {image ? (
-                    <img
-                      src={image}
-                      alt={category}
-                      loading="lazy"
-                      onError={handleImgError}
-                      className="h-64 w-full object-cover transition duration-700 group-hover:scale-105 sm:h-80"
-                    />
-                  ) : (
-                    <div className="h-64 bg-neutral-100 sm:h-80" />
-                  )}
-
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-
-                  <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between p-5 text-white">
-                    <div>
-                      <p className="text-[10px] tracking-widest text-white/75">
-                        COLLECTION 0{index + 1}
-                      </p>
-                      <h3 className="mt-2 text-lg font-medium sm:text-xl">
-                        {category}
-                      </h3>
-                    </div>
-                    <FiArrowRight
-                      size={20}
-                      className="transition-transform group-hover:translate-x-1"
-                    />
+              <div className="relative overflow-hidden bg-neutral-100">
+                {product.images?.[0] ? (
+                  <img
+                    src={product.images[0]}
+                    alt={product.productName}
+                    loading="lazy"
+                    onError={handleImgError}
+                    className="h-64 w-full object-cover transition duration-500 group-hover:scale-105 sm:h-80"
+                  />
+                ) : (
+                  <div className="flex h-64 items-center justify-center text-neutral-400 sm:h-80">
+                    No image available
                   </div>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      )}
+                )}
+              </div>
 
+              <div className="space-y-2 pt-4">
+                <p className="text-base font-medium text-neutral-900">
+                  {product.productName}
+                </p>
+
+                <p className="text-base font-semibold text-neutral-900">
+                  ₹{Number(product.price).toLocaleString("en-IN")}
+                </p>
+
+                <p
+                  className={`text-sm font-medium ${
+                    inStock ? "text-green-700" : "text-red-600"
+                  }`}
+                >
+                  {inStock ? "In Stock" : "Out of Stock"}
+                </p>
+              </div>
+            </Link>
+          );
+        });
+      })}
+    </div>
+  </section>
+)}
+
+
+      
       {/* Featured products */}
-      <section className="bg-neutral-50 py-12 sm:py-16">
-        <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-12">
-          <div
-            data-aos="fade-up"
-            className="mb-8 flex items-end justify-between gap-4"
-          >
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-neutral-500">
-                Handpicked for you
-              </p>
-              <h2 className="mt-3 text-3xl font-medium tracking-tight sm:text-4xl">
-                Featured products
-              </h2>
-            </div>
+<section className="bg-neutral-50 py-12 sm:py-16">
+  <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-12">
+    <div className="mb-8 flex items-end justify-between gap-4">
+      <div>
+        <p className="text-xs uppercase tracking-[0.25em] text-neutral-500">
+          Handpicked for you
+        </p>
+        <h2 className="mt-3 text-3xl font-medium tracking-tight sm:text-4xl">
+          Featured products
+        </h2>
+      </div>
 
-            <Link
-              to="/products"
-              className="flex shrink-0 items-center gap-2 text-xs font-medium underline underline-offset-4 sm:text-sm"
-            >
-              View all <FiArrowRight />
-            </Link>
+      <Link
+        to="/products"
+        className="flex shrink-0 items-center gap-2 text-xs font-medium underline underline-offset-4 sm:text-sm"
+      >
+        View all <FiArrowRight />
+      </Link>
+    </div>
+
+    {loading ? (
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="animate-pulse">
+            <div className="aspect-[4/5] bg-neutral-200" />
+            <div className="mt-3 h-3 w-2/3 bg-neutral-200" />
+            <div className="mt-3 h-3 w-1/3 bg-neutral-200" />
           </div>
+        ))}
+      </div>
+    ) : error ? (
+      <div className="border border-neutral-200 bg-white p-8 text-center">
+        <p className="text-sm text-neutral-600">{error}</p>
+        <Link
+          to="/products"
+          className="mt-4 inline-block text-sm underline underline-offset-4"
+        >
+          Visit products page
+        </Link>
+      </div>
+    ) : featuredProducts.length === 0 ? (
+      <div className="border border-dashed border-neutral-300 bg-white px-6 py-12 text-center">
+        <FiShoppingBag size={28} className="mx-auto text-neutral-400" />
+        <h3 className="mt-4 font-medium">Coming soon</h3>
+        <p className="mt-2 text-sm text-neutral-500">
+          New products will appear here when available.
+        </p>
+        <Link
+          to="/products"
+          className="mt-4 inline-block text-sm underline underline-offset-4"
+        >
+          Browse all products
+        </Link>
+      </div>
+    ) : (
+      <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 sm:gap-x-6 lg:grid-cols-4">
+        {featuredProducts.map((product, i) => {
+          const inStock =
+            product.isAvailable && Number(product.stock) > 0;
 
-          {loading ? (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="animate-pulse">
-                  <div className="aspect-[4/5] bg-neutral-200" />
-                  <div className="mt-3 h-3 w-2/3 bg-neutral-200" />
-                  <div className="mt-3 h-3 w-1/3 bg-neutral-200" />
-                </div>
-              ))}
-            </div>
-          ) : error ? (
-            <div className="border border-neutral-200 bg-white p-8 text-center">
-              <p className="text-sm text-neutral-600">{error}</p>
-              <Link
-                to="/products"
-                className="mt-4 inline-block text-sm underline underline-offset-4"
-              >
-                Visit products page
-              </Link>
-            </div>
-          ) : featuredProducts.length === 0 ? (
-            <div className="border border-dashed border-neutral-300 bg-white px-6 py-12 text-center">
-              <FiShoppingBag size={28} className="mx-auto text-neutral-400" />
-              <h3 className="mt-4 font-medium">Coming soon</h3>
-              <p className="mt-2 text-sm text-neutral-500">
-                New products will appear here when available.
-              </p>
-              <Link
-                to="/products"
-                className="mt-4 inline-block text-sm underline underline-offset-4"
-              >
-                Browse all products
-              </Link>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 sm:gap-x-6 lg:grid-cols-4">
-              {featuredProducts.map((product, i) => (
-                <Link
-                  key={product._id}
-                  to={`/products/${product._id}`}
-                  data-aos="fade-up"
-                  data-aos-delay={i * 100}
-                  className="group min-w-0"
+          return (
+            <Link
+              key={product._id}
+              to={`/products/${product._id}`}
+              data-aos="fade-up"
+              data-aos-delay={i * 100}
+              className="group min-w-0"
+            >
+              <div className="relative aspect-[4/5] overflow-hidden bg-neutral-100">
+                {product.images?.[0] ? (
+                  <img
+                    src={product.images[0]}
+                    alt={product.productName}
+                    loading="lazy"
+                    onError={handleImgError}
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <FiShoppingBag
+                      size={30}
+                      className="text-neutral-400"
+                    />
+                  </div>
+                )}
+
+                <span
+                  className={`absolute left-2 top-2 px-2 py-1 text-[9px] font-medium uppercase tracking-widest sm:left-3 sm:top-3 sm:text-[10px] ${
+                    inStock
+                      ? "bg-green-100 text-green-700"
+                      : "bg-red-100 text-red-700"
+                  }`}
                 >
-                  <div className="relative aspect-[4/5] overflow-hidden bg-neutral-100">
-                    {product.images?.[0] ? (
-                      <img
-                        src={product.images[0]}
-                        alt={product.productName}
-                        loading="lazy"
-                        onError={handleImgError}
-                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center">
-                        <FiShoppingBag size={30} className="text-neutral-400" />
-                      </div>
-                    )}
+                  {inStock ? "In Stock" : "Out of Stock"}
+                </span>
+              </div>
 
-                    <span className="absolute left-2 top-2 bg-white px-2 py-1 text-[9px] uppercase tracking-widest sm:left-3 sm:top-3 sm:text-[10px]">
-                      Available
-                    </span>
-                  </div>
+              <div className="pt-3">
+                <h3 className="line-clamp-2 text-sm font-medium leading-5 sm:text-base">
+                  {product.productName}
+                </h3>
 
-                  <div className="pt-3">
-                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">
-                      {product.category}
-                    </p>
-
-                    <h3 className="mt-1 line-clamp-2 text-sm font-medium leading-5 sm:text-base">
-                      {product.productName}
-                    </h3>
-
-                    <p className="mt-2 text-sm font-semibold">
-                      {formatPrice(product.price)}
-                    </p>
-
-                    <span className="mt-3 inline-flex items-center gap-2 text-xs text-neutral-600 transition group-hover:text-black">
-                      View product
-                      <FiArrowRight
-                        size={13}
-                        className="transition-transform group-hover:translate-x-1"
-                      />
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
+                <p className="mt-2 text-sm font-semibold">
+                  {formatPrice(product.price)}
+                </p>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    )}
+  </div>
+</section>
 
       {/* Final call to action */}
       <section
