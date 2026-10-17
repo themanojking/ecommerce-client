@@ -275,20 +275,26 @@ export default function Navbar() {
         className="mx-auto flex h-[64px] max-w-7xl items-center justify-between gap-2 px-5 sm:h-[68px] sm:px-8 lg:px-12"
       >
         {/* Brand */}
-        <Link
-          to="/"
-          onClick={closeMenus}
-          className="group flex shrink-0 items-center gap-2.5"
-        >
-          <span className="flex h-9 w-9 items-center justify-center bg-black text-white transition duration-300 group-hover:-rotate-6 group-hover:bg-neutral-700">
-            <FiShoppingBag size={19} />
-          </span>
+        
+<Link
+  to="/"
+  onClick={closeMenus}
+  className="group flex shrink-0 items-center gap-2.5"
+>
+  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-black transition duration-300 group-hover:-rotate-6 group-hover:bg-neutral-700">
+    <img
+      src="/assets/ShopZoneSpeedBagLogo.png"
+      alt="ShopZone Logo"
+      className="h-full w-full object-contain"
+    />
+  </span>
 
-          <span className="text-lg font-bold tracking-tight text-black sm:text-xl">
-            Shop<span className="font-normal">Zone</span>
-            <span className="ml-1 text-black">.</span>
-          </span>
-        </Link>
+  <span className="text-lg font-bold tracking-tight text-black sm:text-xl">
+    Shop<span className="font-normal">Zone</span>
+    <span className="ml-1 text-black">.</span>
+  </span>
+</Link>
+
 
         {/* Desktop links */}
         <div className="hidden items-center gap-0 md:flex lg:gap-4 xl:gap-6">

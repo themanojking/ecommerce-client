@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -40,6 +41,24 @@ const handleImgError = (e) => {
   }
 };
 
+// Load Razorpay Checkout only when online payment is selected.
+const loadRazorpayScript = () =>
+  new Promise((resolve) => {
+    if (window.Razorpay) {
+      resolve(true);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+
+    document.body.appendChild(script);
+  });
+
 const inputClass =
   "mt-2 w-full rounded-none border border-neutral-300 bg-white px-4 py-3 text-sm text-neutral-900 outline-none transition duration-300 placeholder:text-neutral-400 hover:border-neutral-500 focus:border-black focus:shadow-[0_0_0_3px_rgba(0,0,0,0.06)] focus:ring-1 focus:ring-black";
 
@@ -65,7 +84,6 @@ export default function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState("COD");
   const [loading, setLoading] = useState(false);
 
-  // Shipping amount managed by the Admin panel.
   const [shippingAmount, setShippingAmount] = useState(0);
   const [shippingLoading, setShippingLoading] = useState(true);
   const [shippingError, setShippingError] = useState(false);
@@ -79,14 +97,13 @@ export default function Checkout() {
     });
   }, []);
 
-  // Fetch the current shipping amount from the server.
+  // Fetch shipping charges configured in the Admin panel.
   useEffect(() => {
     let active = true;
 
     const fetchShippingAmount = async () => {
       try {
         const { data } = await api.get("/admin/shipping");
-
         const amount = Number(data?.shippingAmount);
 
         if (
@@ -129,14 +146,13 @@ export default function Checkout() {
     0
   );
 
-  // Subtotal of products only.
+  // Display-only subtotal. Backend calculates the actual order amount.
   const total = cartItems.reduce(
     (sum, item) =>
       sum + Number(item.price || 0) * Number(item.quantity || 0),
     0
   );
 
-  // Estimated total includes the Admin-configured shipping amount.
   const estimatedTotal = total + shippingAmount;
 
   const handleChange = (event) => {
@@ -148,24 +164,22 @@ export default function Checkout() {
     }));
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
+  const validateCheckout = () => {
     if (cartItems.length === 0) {
       toast.error("Your cart is empty.");
-      return;
+      return false;
     }
 
     if (shippingLoading) {
       toast.error("Please wait while shipping charges load.");
-      return;
+      return false;
     }
 
     if (shippingError) {
       toast.error(
         "Unable to verify shipping charges. Please refresh and try again."
       );
-      return;
+      return false;
     }
 
     if (
@@ -178,8 +192,17 @@ export default function Checkout() {
       )
     ) {
       toast.error("Please check your cart quantities and stock.");
-      return;
+      return false;
     }
+
+    return true;
+  };
+
+  // COD and Razorpay checkout.
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!validateCheckout()) return;
 
     try {
       setLoading(true);
@@ -191,36 +214,190 @@ export default function Checkout() {
         })),
         shippingAddress,
         paymentMethod,
-
-        // Informational values only.
-        // The backend recalculates all prices before saving the order.
+        // These values are informational only.
+        // The backend must calculate final prices itself.
         itemsPrice: total,
         shippingPrice: shippingAmount,
         totalPrice: estimatedTotal,
       };
 
-      const { data } = await api.post("/orders", orderPayload);
+      // -----------------------------------------
+      // CASH ON DELIVERY
+      // -----------------------------------------
+      if (paymentMethod === "COD") {
+        const { data } = await api.post("/orders", orderPayload);
+        const orderId = data?.order?._id || data?._id;
 
-      dispatch(clearCart());
-      toast.success("Order placed successfully!");
+        if (!data?.success || !orderId) {
+          throw new Error(
+            data?.message || "Unable to confirm your order."
+          );
+        }
 
-      const orderId = data.order?._id || data._id;
-
-      if (orderId) {
+        dispatch(clearCart());
+        toast.success("Order placed successfully!");
         navigate(`/order-success/${orderId}`);
-      } else {
-        navigate("/orders");
+        return;
       }
+
+      // -----------------------------------------
+      // RAZORPAY ONLINE PAYMENT
+      // -----------------------------------------
+      const scriptLoaded = await loadRazorpayScript();
+
+      if (!scriptLoaded) {
+        throw new Error(
+          "Unable to load Razorpay Checkout. Please check your internet connection."
+        );
+      }
+
+      // Create the gateway order using the backend.
+      const { data: paymentOrder } = await api.post(
+        "/orders/razorpay/create",
+        orderPayload
+      );
+
+      if (
+        !paymentOrder?.success ||
+        !paymentOrder?.orderId ||
+        !paymentOrder?.razorpayOrderId ||
+        !paymentOrder?.keyId
+      ) {
+        throw new Error(
+          paymentOrder?.message || "Unable to initialize online payment."
+        );
+      }
+
+      // Open Razorpay Checkout.
+      const verificationResult = await new Promise((resolve, reject) => {
+        let completed = false;
+
+        const finish = (callback, value) => {
+          if (completed) return;
+          completed = true;
+          callback(value);
+        };
+
+        const razorpay = new window.Razorpay({
+          key: paymentOrder.keyId,
+          amount: paymentOrder.amount,
+          currency: paymentOrder.currency || "INR",
+          name: "ShopZone",
+          description: "ShopZone order payment",
+          order_id: paymentOrder.razorpayOrderId,
+
+          prefill: {
+            name: shippingAddress.name,
+            email: shippingAddress.useremail,
+            contact: shippingAddress.phone,
+          },
+
+          notes: {
+            orderId: paymentOrder.orderId,
+          },
+
+          theme: {
+            color: "#000000",
+          },
+
+          handler: async (response) => {
+            try {
+              // Verify the payment on the backend.
+              const { data: verification } = await api.post(
+                "/orders/razorpay/verify",
+                {
+                  orderId: paymentOrder.orderId,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }
+              );
+
+              if (!verification?.success) {
+                throw new Error(
+                  verification?.message ||
+                    "Payment verification failed."
+                );
+              }
+
+              finish(resolve, {
+                orderId: paymentOrder.orderId,
+              });
+            } catch (error) {
+              finish(
+                reject,
+                new Error(
+                  error.response?.data?.message ||
+                    error.message ||
+                    "Payment verification failed. Check your order status before retrying."
+                )
+              );
+            }
+          },
+
+          modal: {
+            ondismiss: () => {
+              finish(resolve, null);
+            },
+          },
+        });
+
+        razorpay.on("payment.failed", (response) => {
+          finish(
+            reject,
+            new Error(
+              response.error?.description ||
+                "Payment failed. Please try again."
+            )
+          );
+        });
+
+        razorpay.open();
+      });
+
+      // Customer closed the popup without verified payment.
+      if (!verificationResult) {
+        toast("Payment was not completed. Your cart is unchanged.");
+        return;
+      }
+
+      // Clear the cart only after backend verification succeeds.
+      dispatch(clearCart());
+      toast.success("Payment successful! Your order is confirmed.");
+      navigate(`/order-success/${verificationResult.orderId}`);
     } catch (error) {
+      console.error("Checkout error:", error);
+
       toast.error(
         error.response?.data?.message ||
-          "Unable to place your order. Please check your details and try again."
+          error.message ||
+          "Unable to complete checkout. Please check your order status."
       );
     } finally {
       setLoading(false);
     }
   };
 
+  const Spinner = (
+    <span
+      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+      aria-hidden="true"
+    />
+  );
+
+  const submitButtonText =
+    paymentMethod === "Razorpay" ? "Pay now" : "Place order";
+
+  const loadingButtonText =
+    paymentMethod === "Razorpay" ? "Processing..." : "Placing...";
+
+  const submitDisabled =
+    loading ||
+    shippingLoading ||
+    shippingError ||
+    cartItems.length === 0;
+
+  // Empty cart screen.
   if (cartItems.length === 0) {
     return (
       <main className="flex min-h-[70vh] items-center justify-center overflow-x-hidden bg-white px-5 py-16">
@@ -261,13 +438,6 @@ export default function Checkout() {
       </main>
     );
   }
-
-  const Spinner = (
-    <span
-      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
-      aria-hidden="true"
-    />
-  );
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-white pb-28 text-neutral-900 lg:pb-0">
@@ -312,7 +482,6 @@ export default function Checkout() {
             Complete your delivery details to place your order.
           </p>
 
-          {/* Progress steps */}
           <ol className="mt-6 flex items-center gap-2 text-[11px] sm:gap-3 sm:text-xs">
             {steps.map((step, i) => (
               <li
@@ -354,7 +523,7 @@ export default function Checkout() {
           className="mt-8 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-16"
         >
           <div className="space-y-8">
-            {/* Shipping address */}
+            {/* DELIVERY ADDRESS */}
             <section data-aos="fade-up">
               <div className="flex items-center gap-4 border-b border-neutral-200 pb-5">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center bg-neutral-100">
@@ -387,10 +556,7 @@ export default function Checkout() {
                 </div>
 
                 <div data-aos="fade-up" data-aos-delay="100">
-                  <label
-                    htmlFor="useremail"
-                    className="text-xs font-semibold"
-                  >
+                  <label htmlFor="useremail" className="text-xs font-semibold">
                     Email address *
                   </label>
                   <input
@@ -411,17 +577,17 @@ export default function Checkout() {
                     Phone number *
                   </label>
                   <input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    value={shippingAddress.phone}
-                    onChange={handleChange}
-                    required
-                    pattern="[0-9+\-\s()]{7,20}"
-                    autoComplete="tel"
-                    className={inputClass}
-                    placeholder="Your contact number"
-                  />
+  id="phone"
+  name="phone"
+  type="tel"
+  value={shippingAddress.phone}
+  onChange={handleChange}
+  required
+  pattern="[0-9+() -]{7,20}"
+  autoComplete="tel"
+  className={inputClass}
+  placeholder="Your contact number"
+/>
                 </div>
 
                 <div data-aos="fade-up" data-aos-delay="200">
@@ -509,7 +675,7 @@ export default function Checkout() {
               </div>
             </section>
 
-            {/* Payment method */}
+            {/* PAYMENT METHOD */}
             <section data-aos="fade-up">
               <div className="flex items-center gap-4 border-b border-neutral-200 pb-5">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center bg-neutral-100">
@@ -524,6 +690,7 @@ export default function Checkout() {
                 </div>
               </div>
 
+              {/* COD */}
               <label className="mt-5 flex cursor-pointer items-start gap-4 border border-neutral-300 p-4 transition duration-300 hover:border-neutral-500 has-[:checked]:border-black has-[:checked]:bg-neutral-50">
                 <input
                   type="radio"
@@ -548,10 +715,34 @@ export default function Checkout() {
                   className="mt-0.5 text-neutral-700"
                 />
               </label>
+
+              {/* RAZORPAY */}
+              <label className="mt-3 flex cursor-pointer items-start gap-4 border border-neutral-300 p-4 transition duration-300 hover:border-neutral-500 has-[:checked]:border-black has-[:checked]:bg-neutral-50">
+                <input
+                  type="radio"
+                  name="paymentMethod"
+                  value="Razorpay"
+                  checked={paymentMethod === "Razorpay"}
+                  onChange={(event) => setPaymentMethod(event.target.value)}
+                  className="mt-1 accent-black"
+                />
+
+                <span className="flex-1">
+                  <span className="block text-sm font-medium">
+                    Pay Online with Razorpay
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-neutral-500">
+                    Pay securely using the payment methods available at
+                    checkout.
+                  </span>
+                </span>
+
+                <FiShield size={18} className="mt-0.5 text-neutral-700" />
+              </label>
             </section>
           </div>
 
-          {/* Order summary */}
+          {/* ORDER SUMMARY */}
           <aside className="border border-neutral-200 p-5 sm:p-7 lg:sticky lg:top-24">
             <div data-aos="fade-up">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
@@ -652,22 +843,17 @@ export default function Checkout() {
 
               <button
                 type="submit"
-                disabled={
-                  loading ||
-                  shippingLoading ||
-                  shippingError ||
-                  cartItems.length === 0
-                }
+                disabled={submitDisabled}
                 className="group mt-6 flex min-h-14 w-full items-center justify-center gap-2 bg-black px-5 py-4 text-sm font-medium text-white transition hover:bg-neutral-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-neutral-400"
               >
                 {loading ? (
                   <>
                     {Spinner}
-                    Placing order...
+                    {loadingButtonText}
                   </>
                 ) : (
                   <>
-                    Place order
+                    {submitButtonText}
                     <FiArrowLeft
                       className="rotate-180 transition-transform group-hover:translate-x-1"
                       size={15}
@@ -692,7 +878,7 @@ export default function Checkout() {
             </div>
           </aside>
 
-          {/* Mobile / tablet sticky place-order bar */}
+          {/* MOBILE / TABLET STICKY CHECKOUT BAR */}
           <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-4 border-t border-neutral-200 bg-white/95 px-5 py-3 backdrop-blur lg:hidden">
             <div className="min-w-0">
               <p className="text-[11px] text-neutral-500">Order total</p>
@@ -708,21 +894,16 @@ export default function Checkout() {
 
             <button
               type="submit"
-              disabled={
-                loading ||
-                shippingLoading ||
-                shippingError ||
-                cartItems.length === 0
-              }
+              disabled={submitDisabled}
               className="inline-flex shrink-0 items-center gap-2 bg-black px-6 py-3.5 text-sm font-medium text-white transition hover:bg-neutral-700 active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-400"
             >
               {loading ? (
                 <>
                   {Spinner}
-                  Placing...
+                  {loadingButtonText}
                 </>
               ) : (
-                "Place order"
+                submitButtonText
               )}
             </button>
           </div>
