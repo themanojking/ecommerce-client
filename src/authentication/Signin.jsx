@@ -4,7 +4,11 @@ import { useDispatch } from "react-redux";
 import toast from "react-hot-toast";
 import AOS from "aos";
 import "aos/dist/aos.css";
+
 import { restoreCart } from "../redux/slices/cartSlice";
+import { setCredentials } from "../redux/slices/authSlice";
+import api from "../services/api";
+
 import {
   FiMail,
   FiLock,
@@ -15,9 +19,6 @@ import {
   FiShield,
   FiTruck,
 } from "react-icons/fi";
-
-import { setCredentials } from "../redux/slices/authSlice";
-import api from "../services/api";
 
 const SIDE_IMAGE =
   "https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=1200&auto=format&fit=crop&q=80";
@@ -37,6 +38,7 @@ const Signin = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Initialize animations
   useEffect(() => {
     AOS.init({
       duration: 600,
@@ -58,6 +60,7 @@ const Signin = () => {
     }));
   };
 
+  // Login
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -65,7 +68,7 @@ const Signin = () => {
       setLoading(true);
 
       const { data } = await api.post("/auth/login", {
-        useremail: formData.useremail.trim(),
+        useremail: formData.useremail.trim().toLowerCase(),
         password: formData.password,
       });
 
@@ -77,18 +80,29 @@ const Signin = () => {
         return;
       }
 
-      // Admin accounts should use the separate admin application.
-      if (data.user.role === "admin") {
-  toast.success("Admin login successful!");
+      // Admin accounts go to the separate Admin application.
+      if (user.role === "admin") {
+        const adminUrl = import.meta.env.VITE_ADMIN_URL;
 
-  setTimeout(() => {
-    window.location.href = `${import.meta.env.VITE_ADMIN_URL}/login`;
-  }, 500);
+        if (!adminUrl) {
+          toast.error(
+            "Admin URL is missing. Please configure VITE_ADMIN_URL."
+          );
+          return;
+        }
 
-  return;
-}
+        localStorage.setItem("adminToken", token);
+        localStorage.setItem("adminUser", JSON.stringify(user));
 
-      // Only customer accounts should continue into the shopping site.
+        toast.success("Admin login successful!");
+
+        window.location.href =
+          `${adminUrl.replace(/\/+$/, "")}/login`;
+
+        return;
+      }
+
+      // Only customer accounts can access the shopping site.
       if (user.role !== "customer") {
         toast.error("This account does not have customer access.");
         return;
@@ -101,7 +115,7 @@ const Signin = () => {
         })
       );
 
-      // Restore the logged-in customer's cart.
+      // Restore the customer's saved cart.
       const userKey = user._id || user.useremail;
       let savedCart = [];
 
@@ -124,6 +138,11 @@ const Signin = () => {
       toast.success("Login successful!");
       navigate("/");
     } catch (error) {
+      console.error(
+        "Signin error:",
+        error.response?.data || error.message
+      );
+
       toast.error(
         error.response?.data?.message ||
           "Login failed. Please check your credentials."
@@ -131,6 +150,19 @@ const Signin = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Open the separate Admin application.
+  const handleAdminLogin = () => {
+    const adminUrl = import.meta.env.VITE_ADMIN_URL;
+
+    if (!adminUrl) {
+      toast.error("Admin URL is not configured.");
+      return;
+    }
+
+    window.location.href =
+      `${adminUrl.replace(/\/+$/, "")}/login`;
   };
 
   return (
@@ -232,7 +264,10 @@ const Signin = () => {
               </p>
             </header>
 
-            <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-4 sm:space-y-5"
+            >
               {/* Email */}
               <div data-aos="fade-up" data-aos-delay="100">
                 <label
@@ -312,7 +347,11 @@ const Signin = () => {
               </div>
 
               {/* Submit */}
-              <div data-aos="fade-up" data-aos-delay="200" className="pt-1">
+              <div
+                data-aos="fade-up"
+                data-aos-delay="200"
+                className="pt-1"
+              >
                 <button
                   type="submit"
                   disabled={loading}
@@ -355,15 +394,17 @@ const Signin = () => {
                 </Link>
               </p>
 
+              {/* Admin Login: opens the separate Admin website */}
               <div className="mt-5">
-                <Link
-                  to="/login"
+                <button
+                  type="button"
+                  onClick={handleAdminLogin}
                   className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-700 transition hover:text-black hover:underline"
                 >
                   <FiShield size={16} />
                   Admin Login
                   <FiArrowRight size={15} />
-                </Link>
+                </button>
               </div>
             </div>
 
