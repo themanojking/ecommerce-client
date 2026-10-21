@@ -1,3 +1,4 @@
+
 import { createSlice } from "@reduxjs/toolkit";
 
 const authSlice = createSlice({
@@ -23,6 +24,7 @@ const authSlice = createSlice({
 
       localStorage.removeItem("user");
       localStorage.removeItem("token");
+      localStorage.removeItem("cartItems");
     },
   },
 });

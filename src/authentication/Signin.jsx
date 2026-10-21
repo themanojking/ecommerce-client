@@ -4,7 +4,7 @@ import { useDispatch } from "react-redux";
 import toast from "react-hot-toast";
 import AOS from "aos";
 import "aos/dist/aos.css";
-
+import { restoreCart } from "../redux/slices/cartSlice";
 import {
   FiMail,
   FiLock,
@@ -58,35 +58,55 @@ const Signin = () => {
     }));
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  
+const handleSubmit = async (event) => {
+  event.preventDefault();
 
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      const { data } = await api.post("/auth/login", {
-        useremail: formData.useremail.trim(),
-        password: formData.password,
-      });
+    const { data } = await api.post("/auth/login", {
+      useremail: formData.useremail.trim(),
+      password: formData.password,
+    });
 
-      dispatch(
-        setCredentials({
-          user: data.user,
-          token: data.token,
-        })
-      );
+    // Save login credentials
+    dispatch(
+      setCredentials({
+        user: data.user,
+        token: data.token,
+      })
+    );
 
-      toast.success("Login successful!");
-      navigate("/");
-    } catch (error) {
-      toast.error(
-        error.response?.data?.message ||
-          "Login failed. Please try again."
-      );
-    } finally {
-      setLoading(false);
+    // Restore this user's previously saved cart
+    const userKey = data.user?._id || data.user?.useremail;
+
+    let savedCart = [];
+
+    if (userKey) {
+      try {
+        savedCart = JSON.parse(
+          localStorage.getItem(`cart_${userKey}`) || "[]"
+        );
+      } catch {
+        savedCart = [];
+      }
     }
-  };
+
+    dispatch(restoreCart(savedCart));
+
+    toast.success("Login successful!");
+    navigate("/");
+  } catch (error) {
+    toast.error(
+      error.response?.data?.message ||
+        "Login failed. Please try again."
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <main className="min-h-[calc(100dvh-64px)] w-full min-w-0 overflow-x-clip bg-white text-neutral-900">

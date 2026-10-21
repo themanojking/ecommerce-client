@@ -19,6 +19,7 @@ import {
 } from "react-icons/fi";
 import toast from "react-hot-toast";
 import { logout } from "../redux/slices/authSlice";
+import { clearCart } from "../redux/slices/cartSlice";
 
 // Single source of truth for the main links (used by desktop and mobile)
 const mainLinks = [
@@ -115,12 +116,26 @@ export default function Navbar() {
       isActive ? "nav-underline-active" : ""
     }`;
 
-  const handleLogout = () => {
-    closeMenus();
-    dispatch(logout());
-    toast.success("Logged out successfully");
-    navigate("/signin");
-  };
+ 
+const handleLogout = () => {
+  const userKey = user?._id || user?.useremail;
+
+  if (userKey) {
+    localStorage.setItem(
+      `cart_${userKey}`,
+      JSON.stringify(cartItems)
+    );
+  }
+
+  dispatch(clearCart());
+  dispatch(logout());
+
+  localStorage.removeItem("cartItems");
+
+  closeMenus();
+  navigate("/signin");
+};
+
 
   const initials = (user?.name || user?.useremail || "User")
     .trim()
