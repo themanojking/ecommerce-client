@@ -58,55 +58,80 @@ const Signin = () => {
     }));
   };
 
-  
-const handleSubmit = async (event) => {
-  event.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
 
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const { data } = await api.post("/auth/login", {
-      useremail: formData.useremail.trim(),
-      password: formData.password,
-    });
+      const { data } = await api.post("/auth/login", {
+        useremail: formData.useremail.trim(),
+        password: formData.password,
+      });
 
-    // Save login credentials
-    dispatch(
-      setCredentials({
-        user: data.user,
-        token: data.token,
-      })
-    );
+      const user = data.user;
+      const token = data.token;
 
-    // Restore this user's previously saved cart
-    const userKey = data.user?._id || data.user?.useremail;
-
-    let savedCart = [];
-
-    if (userKey) {
-      try {
-        savedCart = JSON.parse(
-          localStorage.getItem(`cart_${userKey}`) || "[]"
-        );
-      } catch {
-        savedCart = [];
+      if (!user || !token) {
+        toast.error("Invalid login response from server.");
+        return;
       }
+
+      // Admin accounts should use the separate admin application.
+      if (data.user.role === "admin") {
+  toast.success("Admin login successful!");
+
+  setTimeout(() => {
+    window.location.href = `${import.meta.env.VITE_ADMIN_URL}/login`;
+  }, 500);
+
+  return;
+}
+
+      // Only customer accounts should continue into the shopping site.
+      if (user.role !== "customer") {
+        toast.error("This account does not have customer access.");
+        return;
+      }
+
+      dispatch(
+        setCredentials({
+          user,
+          token,
+        })
+      );
+
+      // Restore the logged-in customer's cart.
+      const userKey = user._id || user.useremail;
+      let savedCart = [];
+
+      if (userKey) {
+        try {
+          savedCart = JSON.parse(
+            localStorage.getItem(`cart_${userKey}`) || "[]"
+          );
+
+          if (!Array.isArray(savedCart)) {
+            savedCart = [];
+          }
+        } catch {
+          savedCart = [];
+        }
+      }
+
+      dispatch(restoreCart(savedCart));
+
+      toast.success("Login successful!");
+      navigate("/");
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message ||
+          "Login failed. Please check your credentials."
+      );
+    } finally {
+      setLoading(false);
     }
-
-    dispatch(restoreCart(savedCart));
-
-    toast.success("Login successful!");
-    navigate("/");
-  } catch (error) {
-    toast.error(
-      error.response?.data?.message ||
-        "Login failed. Please try again."
-    );
-  } finally {
-    setLoading(false);
-  }
-};
-
+  };
 
   return (
     <main className="min-h-[calc(100dvh-64px)] w-full min-w-0 overflow-x-clip bg-white text-neutral-900">
@@ -121,14 +146,12 @@ const handleSubmit = async (event) => {
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .signin-image-zoom {
-            animation: none;
-          }
+          .signin-image-zoom { animation: none; }
         }
       `}</style>
 
       <div className="grid min-h-[calc(100dvh-64px)] w-full min-w-0 grid-cols-1 lg:grid-cols-2">
-        {/* Image panel: laptop and desktop */}
+        {/* Image panel */}
         <aside className="relative hidden min-h-[600px] overflow-hidden bg-neutral-900 lg:block xl:min-h-[680px]">
           <img
             src={SIDE_IMAGE}
@@ -170,7 +193,7 @@ const handleSubmit = async (event) => {
                 data-aos-delay="200"
                 className="flex items-center gap-2.5 text-sm text-white/90"
               >
-                <FiShield size={18} className="shrink-0" />
+                <FiShield size={18} />
                 Secure sign in
               </div>
 
@@ -179,18 +202,16 @@ const handleSubmit = async (event) => {
                 data-aos-delay="300"
                 className="flex items-center gap-2.5 text-sm text-white/90"
               >
-                <FiTruck size={18} className="shrink-0" />
+                <FiTruck size={18} />
                 Track your orders
               </div>
             </div>
           </div>
         </aside>
 
-        {/* Sign-in form */}
+        {/* Login form */}
         <section className="flex min-w-0 items-center justify-center px-4 py-8 sm:px-8 sm:py-10 lg:px-8 lg:py-8 xl:px-12 2xl:px-16">
           <div className="w-full max-w-md min-w-0">
-            {/* No business logo/name here because navbar already has it */}
-
             <div data-aos="fade-up" className="mb-5 sm:mb-7">
               <div className="flex h-12 w-12 items-center justify-center bg-black text-white sm:h-14 sm:w-14">
                 <FiLogIn size={24} />
@@ -318,7 +339,7 @@ const handleSubmit = async (event) => {
               </div>
             </form>
 
-            {/* Signup link */}
+            {/* Account links */}
             <div
               data-aos="fade-up"
               data-aos-delay="250"
@@ -333,6 +354,17 @@ const handleSubmit = async (event) => {
                   Create Account
                 </Link>
               </p>
+
+              <div className="mt-5">
+                <Link
+                  to="/login"
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-700 transition hover:text-black hover:underline"
+                >
+                  <FiShield size={16} />
+                  Admin Login
+                  <FiArrowRight size={15} />
+                </Link>
+              </div>
             </div>
 
             <p className="mt-4 text-center text-xs leading-5 text-neutral-500">
