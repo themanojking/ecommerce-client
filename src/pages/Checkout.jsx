@@ -21,8 +21,6 @@ import { clearCart } from "../redux/slices/cartSlice";
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&auto=format&fit=crop&q=80";
 
-const STORAGE_KEY = "deliveryPincode";
-
 const initialAddress = {
   name: "",
   useremail: "",
@@ -43,6 +41,7 @@ const handleImgError = (e) => {
   }
 };
 
+// Load Razorpay Checkout only when online payment is selected.
 const loadRazorpayScript = () =>
   new Promise((resolve) => {
     if (window.Razorpay) {
@@ -80,7 +79,6 @@ export default function Checkout() {
     ...initialAddress,
     name: user?.name || "",
     useremail: user?.useremail || "",
-    postalCode: localStorage.getItem(STORAGE_KEY) || "",
   }));
 
   const [paymentMethod, setPaymentMethod] = useState("COD");
@@ -89,35 +87,6 @@ export default function Checkout() {
   const [shippingAmount, setShippingAmount] = useState(0);
   const [shippingLoading, setShippingLoading] = useState(true);
   const [shippingError, setShippingError] = useState(false);
-
-  // Keep the checkout pincode synchronized with DeliveryChecker.
-  useEffect(() => {
-    const syncPincode = (event) => {
-      const savedPincode =
-        event?.detail?.pincode ??
-        localStorage.getItem(STORAGE_KEY) ??
-        "";
-
-      setShippingAddress((current) => ({
-        ...current,
-        postalCode: String(savedPincode),
-      }));
-    };
-
-    syncPincode();
-
-    window.addEventListener(
-      "deliveryPincodeChanged",
-      syncPincode
-    );
-
-    return () => {
-      window.removeEventListener(
-        "deliveryPincodeChanged",
-        syncPincode
-      );
-    };
-  }, []);
 
   useEffect(() => {
     AOS.init({
@@ -193,17 +162,6 @@ export default function Checkout() {
       ...current,
       [name]: value,
     }));
-
-    // Save and synchronize the pincode when it is edited.
-    if (name === "postalCode") {
-      localStorage.setItem(STORAGE_KEY, value);
-
-      window.dispatchEvent(
-        new CustomEvent("deliveryPincodeChanged", {
-          detail: { pincode: value },
-        })
-      );
-    }
   };
 
   const validateCheckout = () => {
@@ -237,28 +195,6 @@ export default function Checkout() {
       return false;
     }
 
-    const pincode = String(
-      shippingAddress.postalCode || ""
-    ).trim();
-
-    if (!/^[1-9][0-9]{5}$/.test(pincode)) {
-      toast.error("Please enter a valid 6-digit delivery pincode.");
-      return false;
-    }
-
-    if (
-      !shippingAddress.name.trim() ||
-      !shippingAddress.useremail.trim() ||
-      !shippingAddress.phone.trim() ||
-      !shippingAddress.address.trim() ||
-      !shippingAddress.city.trim() ||
-      !shippingAddress.state.trim() ||
-      !shippingAddress.country.trim()
-    ) {
-      toast.error("Please complete all delivery address fields.");
-      return false;
-    }
-
     return true;
   };
 
@@ -271,30 +207,15 @@ export default function Checkout() {
     try {
       setLoading(true);
 
-      const deliveryPincode = String(
-        shippingAddress.postalCode || ""
-      ).trim();
-
-      // Ensure the latest pincode is saved before creating the order.
-      localStorage.setItem(STORAGE_KEY, deliveryPincode);
-
       const orderPayload = {
         orderItems: cartItems.map((item) => ({
           product: item._id,
           quantity: Number(item.quantity),
         })),
-
-        shippingAddress: {
-          ...shippingAddress,
-          postalCode: deliveryPincode,
-        },
-
-        // Used by the backend to save delivery details in MongoDB.
-        deliveryPincode,
-
+        shippingAddress,
         paymentMethod,
-
-        // Informational only. Backend calculates final prices.
+        // These values are informational only.
+        // The backend must calculate final prices itself.
         itemsPrice: total,
         shippingPrice: shippingAmount,
         totalPrice: estimatedTotal,
@@ -304,11 +225,7 @@ export default function Checkout() {
       // CASH ON DELIVERY
       // -----------------------------------------
       if (paymentMethod === "COD") {
-        const { data } = await api.post(
-          "/orders",
-          orderPayload
-        );
-
+        const { data } = await api.post("/orders", orderPayload);
         const orderId = data?.order?._id || data?._id;
 
         if (!data?.success || !orderId) {
@@ -347,102 +264,96 @@ export default function Checkout() {
         !paymentOrder?.keyId
       ) {
         throw new Error(
-          paymentOrder?.message ||
-            "Unable to initialize online payment."
+          paymentOrder?.message || "Unable to initialize online payment."
         );
       }
 
       // Open Razorpay Checkout.
-      const verificationResult = await new Promise(
-        (resolve, reject) => {
-          let completed = false;
+      const verificationResult = await new Promise((resolve, reject) => {
+        let completed = false;
 
-          const finish = (callback, value) => {
-            if (completed) return;
-            completed = true;
-            callback(value);
-          };
+        const finish = (callback, value) => {
+          if (completed) return;
+          completed = true;
+          callback(value);
+        };
 
-          const razorpay = new window.Razorpay({
-            key: paymentOrder.keyId,
-            amount: paymentOrder.amount,
-            currency: paymentOrder.currency || "INR",
-            name: "ShopZone",
-            description: "ShopZone order payment",
-            order_id: paymentOrder.razorpayOrderId,
+        const razorpay = new window.Razorpay({
+          key: paymentOrder.keyId,
+          amount: paymentOrder.amount,
+          currency: paymentOrder.currency || "INR",
+          name: "ShopZone",
+          description: "ShopZone order payment",
+          order_id: paymentOrder.razorpayOrderId,
 
-            prefill: {
-              name: shippingAddress.name,
-              email: shippingAddress.useremail,
-              contact: shippingAddress.phone,
-            },
+          prefill: {
+            name: shippingAddress.name,
+            email: shippingAddress.useremail,
+            contact: shippingAddress.phone,
+          },
 
-            notes: {
-              orderId: paymentOrder.orderId,
-            },
+          notes: {
+            orderId: paymentOrder.orderId,
+          },
 
-            theme: {
-              color: "#000000",
-            },
+          theme: {
+            color: "#000000",
+          },
 
-            handler: async (response) => {
-              try {
-                // Verify the payment on the backend.
-                const { data: verification } = await api.post(
-                  "/orders/razorpay/verify",
-                  {
-                    orderId: paymentOrder.orderId,
-                    razorpay_order_id:
-                      response.razorpay_order_id,
-                    razorpay_payment_id:
-                      response.razorpay_payment_id,
-                    razorpay_signature:
-                      response.razorpay_signature,
-                  }
-                );
-
-                if (!verification?.success) {
-                  throw new Error(
-                    verification?.message ||
-                      "Payment verification failed."
-                  );
-                }
-
-                finish(resolve, {
+          handler: async (response) => {
+            try {
+              // Verify the payment on the backend.
+              const { data: verification } = await api.post(
+                "/orders/razorpay/verify",
+                {
                   orderId: paymentOrder.orderId,
-                });
-              } catch (error) {
-                finish(
-                  reject,
-                  new Error(
-                    error.response?.data?.message ||
-                      error.message ||
-                      "Payment verification failed. Check your order status before retrying."
-                  )
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }
+              );
+
+              if (!verification?.success) {
+                throw new Error(
+                  verification?.message ||
+                    "Payment verification failed."
                 );
               }
+
+              finish(resolve, {
+                orderId: paymentOrder.orderId,
+              });
+            } catch (error) {
+              finish(
+                reject,
+                new Error(
+                  error.response?.data?.message ||
+                    error.message ||
+                    "Payment verification failed. Check your order status before retrying."
+                )
+              );
+            }
+          },
+
+          modal: {
+            ondismiss: () => {
+              finish(resolve, null);
             },
+          },
+        });
 
-            modal: {
-              ondismiss: () => {
-                finish(resolve, null);
-              },
-            },
-          });
+        razorpay.on("payment.failed", (response) => {
+          finish(
+            reject,
+            new Error(
+              response.error?.description ||
+                "Payment failed. Please try again."
+            )
+          );
+        });
 
-          razorpay.on("payment.failed", (response) => {
-            finish(
-              reject,
-              new Error(
-                response.error?.description ||
-                  "Payment failed. Please try again."
-              )
-            );
-          });
-
-          razorpay.open();
-        }
-      );
+        razorpay.open();
+      });
 
       // Customer closed the popup without verified payment.
       if (!verificationResult) {
@@ -453,9 +364,7 @@ export default function Checkout() {
       // Clear the cart only after backend verification succeeds.
       dispatch(clearCart());
       toast.success("Payment successful! Your order is confirmed.");
-      navigate(
-        `/order-success/${verificationResult.orderId}`
-      );
+      navigate(`/order-success/${verificationResult.orderId}`);
     } catch (error) {
       console.error("Checkout error:", error);
 
@@ -668,17 +577,17 @@ export default function Checkout() {
                     Phone number *
                   </label>
                   <input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    value={shippingAddress.phone}
-                    onChange={handleChange}
-                    required
-                    pattern="[0-9+() -]{7,20}"
-                    autoComplete="tel"
-                    className={inputClass}
-                    placeholder="Your contact number"
-                  />
+  id="phone"
+  name="phone"
+  type="tel"
+  value={shippingAddress.phone}
+  onChange={handleChange}
+  required
+  pattern="[0-9+() -]{7,20}"
+  autoComplete="tel"
+  className={inputClass}
+  placeholder="Your contact number"
+/>
                 </div>
 
                 <div data-aos="fade-up" data-aos-delay="200">
@@ -691,22 +600,13 @@ export default function Checkout() {
                   <input
                     id="postalCode"
                     name="postalCode"
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
                     value={shippingAddress.postalCode}
                     onChange={handleChange}
                     required
                     autoComplete="postal-code"
-                    pattern="[1-9][0-9]{5}"
-                    title="Enter a valid 6-digit Indian pincode"
                     className={inputClass}
-                    placeholder="6-digit pincode"
+                    placeholder="Postal code"
                   />
-                  <p className="mt-2 text-[11px] leading-5 text-neutral-500">
-                    This pincode will be saved with your order and used for
-                    delivery details.
-                  </p>
                 </div>
 
                 <div className="sm:col-span-2" data-aos="fade-up">

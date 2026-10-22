@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -20,7 +19,6 @@ import {
 } from "../redux/slices/cartSlice";
 import toast from "react-hot-toast";
 import api from "../services/api";
-import DeliveryChecker from "../components/DeliveryChecker";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop&q=80";
@@ -145,9 +143,7 @@ export default function Cart() {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-8px); }
           }
-          .cart-float {
-            animation: cart-float 3.5s ease-in-out infinite;
-          }
+          .cart-float { animation: cart-float 3.5s ease-in-out infinite; }
           @media (prefers-reduced-motion: reduce) {
             .cart-float { animation: none; }
           }
@@ -345,9 +341,7 @@ export default function Cart() {
                         <div className="inline-flex h-9 items-center border border-neutral-300">
                           <button
                             type="button"
-                            onClick={() =>
-                              handleQuantity(item, quantity - 1)
-                            }
+                            onClick={() => handleQuantity(item, quantity - 1)}
                             disabled={quantity <= 1}
                             aria-label="Decrease quantity"
                             className="flex h-full w-8 items-center justify-center transition hover:bg-neutral-100 active:scale-90 disabled:cursor-not-allowed disabled:opacity-30"
@@ -365,9 +359,7 @@ export default function Cart() {
 
                           <button
                             type="button"
-                            onClick={() =>
-                              handleQuantity(item, quantity + 1)
-                            }
+                            onClick={() => handleQuantity(item, quantity + 1)}
                             disabled={quantity >= Number(item.stock)}
                             aria-label="Increase quantity"
                             className="flex h-full w-8 items-center justify-center transition hover:bg-neutral-100 active:scale-90 disabled:cursor-not-allowed disabled:opacity-30"
@@ -422,24 +414,13 @@ export default function Cart() {
           </section>
 
           {/* Order summary */}
-          <aside className="min-w-0 border border-neutral-200 p-4 sm:p-7 lg:sticky lg:top-24">
+          <aside className="border border-neutral-200 p-5 sm:p-7 lg:sticky lg:top-24">
             <div data-aos="fade-up">
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
                 Your order
               </p>
 
-              <h2 className="mt-2 text-xl font-medium">
-                Order summary
-              </h2>
-            </div>
-
-            {/* Estimated delivery checker */}
-            <div
-              data-aos="fade-up"
-              data-aos-delay="50"
-              className="mt-5 w-full min-w-0"
-            >
-              <DeliveryChecker />
+              <h2 className="mt-2 text-xl font-medium">Order summary</h2>
             </div>
 
             <div
@@ -451,7 +432,6 @@ export default function Cart() {
                 <span className="text-neutral-500">
                   Subtotal ({totalQuantity} items)
                 </span>
-
                 <span key={total} className="cart-pop font-medium">
                   {formatPrice(total)}
                 </span>
@@ -459,7 +439,6 @@ export default function Cart() {
 
               <div className="flex justify-between gap-4 text-sm">
                 <span className="text-neutral-500">Shipping</span>
-
                 <span className="text-right text-sm font-medium">
                   {shippingLoading
                     ? "Loading..."
@@ -477,7 +456,6 @@ export default function Cart() {
                 <span className="text-base font-semibold">
                   Estimated total
                 </span>
-
                 <span
                   key={estimatedTotal}
                   className="cart-pop text-xl font-semibold"
@@ -490,7 +468,6 @@ export default function Cart() {
 
               <p className="mt-2 text-[11px] leading-5 text-neutral-500">
                 Shipping charges are based on the current store settings.
-                Delivery dates are estimates.
               </p>
 
               <Link
@@ -499,7 +476,6 @@ export default function Cart() {
                 onClick={(event) => {
                   if (shippingLoading || shippingError) {
                     event.preventDefault();
-
                     toast.error(
                       "Please wait until shipping charges are available."
                     );
@@ -529,15 +505,12 @@ export default function Cart() {
                   size={18}
                   className="mt-0.5 shrink-0 text-neutral-600"
                 />
-
                 <div>
                   <p className="text-xs font-medium">
                     Delivery information
                   </p>
-
                   <p className="mt-1 text-[11px] leading-5 text-neutral-500">
-                    Delivery timing depends on your destination and shipping
-                    service.
+                    Delivery details are confirmed during checkout.
                   </p>
                 </div>
               </div>
@@ -547,15 +520,11 @@ export default function Cart() {
                   size={18}
                   className="mt-0.5 shrink-0 text-neutral-600"
                 />
-
                 <div>
-                  <p className="text-xs font-medium">
-                    Secure checkout
-                  </p>
-
+                  <p className="text-xs font-medium">Secure checkout</p>
                   <p className="mt-1 text-[11px] leading-5 text-neutral-500">
-                    Review your items and shipping details before placing
-                    your order.
+                    Review your items and shipping details before placing your
+                    order.
                   </p>
                 </div>
               </div>
@@ -567,10 +536,7 @@ export default function Cart() {
       {/* Mobile / tablet sticky checkout bar */}
       <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-4 border-t border-neutral-200 bg-white/95 px-5 py-3 backdrop-blur lg:hidden">
         <div className="min-w-0">
-          <p className="text-[11px] text-neutral-500">
-            Estimated total
-          </p>
-
+          <p className="text-[11px] text-neutral-500">Estimated total</p>
           <p
             key={estimatedTotal}
             className="cart-pop text-lg font-semibold"
@@ -586,7 +552,6 @@ export default function Cart() {
           onClick={(event) => {
             if (shippingLoading || shippingError) {
               event.preventDefault();
-
               toast.error(
                 "Please wait until shipping charges are available."
               );
