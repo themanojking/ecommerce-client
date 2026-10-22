@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useDispatch } from "react-redux";
@@ -24,6 +25,7 @@ import {
 import toast from "react-hot-toast";
 import api from "../services/api";
 import { addToCart } from "../redux/slices/cartSlice";
+import DeliveryChecker from "../components/DeliveryChecker";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop&q=80";
@@ -86,7 +88,8 @@ export default function ProductDetails() {
       } catch (err) {
         if (active) {
           setError(
-            err.response?.data?.message || "Unable to load this product."
+            err.response?.data?.message ||
+              "Unable to load this product."
           );
         }
       } finally {
@@ -128,9 +131,13 @@ export default function ProductDetails() {
 
   const handleShare = async () => {
     const url = window.location.href;
+
     try {
       if (navigator.share) {
-        await navigator.share({ title: product?.productName, url });
+        await navigator.share({
+          title: product?.productName,
+          url,
+        });
       } else {
         await navigator.clipboard.writeText(url);
         toast.success("Link copied to clipboard");
@@ -142,6 +149,7 @@ export default function ProductDetails() {
 
   const handleZoomMove = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
+
     setZoom({
       active: true,
       x: ((e.clientX - rect.left) / rect.width) * 100,
@@ -155,8 +163,10 @@ export default function ProductDetails() {
       <main className="min-h-screen bg-gradient-to-b from-neutral-50 to-white px-5 py-10 sm:px-8 sm:py-16">
         <div className="mx-auto max-w-7xl animate-pulse">
           <div className="mb-8 h-4 w-40 rounded-full bg-neutral-200" />
+
           <div className="grid gap-10 md:grid-cols-2 md:gap-16">
             <div className="aspect-[4/5] rounded-3xl bg-neutral-200" />
+
             <div className="space-y-6 py-5">
               <div className="h-10 w-4/5 rounded-xl bg-neutral-200" />
               <div className="h-6 w-1/3 rounded-xl bg-neutral-200" />
@@ -199,13 +209,22 @@ export default function ProductDetails() {
   }
 
   const images = product.images?.filter(Boolean) || [];
-  const outOfStock = Number(product.stock) < 1 || !product.isAvailable;
-  const lowStock = !outOfStock && Number(product.stock) <= 5;
-  const stockPercent = Math.min(100, (Number(product.stock) / 20) * 100);
+  const outOfStock =
+    Number(product.stock) < 1 || !product.isAvailable;
+  const lowStock =
+    !outOfStock && Number(product.stock) <= 5;
+  const stockPercent = Math.min(
+    100,
+    (Number(product.stock) / 20) * 100
+  );
 
   const goPrev = () =>
-    setSelectedImage((i) => (i - 1 + images.length) % images.length);
-  const goNext = () => setSelectedImage((i) => (i + 1) % images.length);
+    setSelectedImage(
+      (i) => (i - 1 + images.length) % images.length
+    );
+
+  const goNext = () =>
+    setSelectedImage((i) => (i + 1) % images.length);
 
   const panels = [
     {
@@ -218,7 +237,7 @@ export default function ProductDetails() {
       key: "delivery",
       icon: FiTruck,
       title: "Delivery & returns",
-      body: "Delivery options and timing are confirmed during checkout. Review the return policy before placing your order.",
+      body: "Delivery dates are estimates. Actual availability and timing depend on the shipping service and destination. Review the return policy before placing your order.",
     },
   ];
 
@@ -273,11 +292,15 @@ export default function ProductDetails() {
           <Link to="/" className="transition hover:text-black">
             Home
           </Link>
+
           <FiChevronRight size={12} />
+
           <Link to="/products" className="transition hover:text-black">
             Products
           </Link>
+
           <FiChevronRight size={12} />
+
           <span className="max-w-48 truncate font-medium text-neutral-900">
             {product.productName}
           </span>
@@ -291,7 +314,9 @@ export default function ProductDetails() {
             <div
               className="group relative aspect-[4/5] cursor-zoom-in overflow-hidden rounded-3xl bg-neutral-100 shadow-xl shadow-neutral-900/5 ring-1 ring-neutral-200/70"
               onMouseMove={handleZoomMove}
-              onMouseLeave={() => setZoom((z) => ({ ...z, active: false }))}
+              onMouseLeave={() =>
+                setZoom((z) => ({ ...z, active: false }))
+              }
             >
               {images.length > 0 ? (
                 <img
@@ -340,7 +365,9 @@ export default function ProductDetails() {
                     key={String(wished)}
                     size={17}
                     className={`pd-heart ${
-                      wished ? "fill-rose-500 text-rose-500" : "text-neutral-800"
+                      wished
+                        ? "fill-rose-500 text-rose-500"
+                        : "text-neutral-800"
                     }`}
                   />
                 </button>
@@ -366,6 +393,7 @@ export default function ProductDetails() {
                   >
                     <FiChevronLeft size={18} />
                   </button>
+
                   <button
                     type="button"
                     onClick={goNext}
@@ -412,7 +440,7 @@ export default function ProductDetails() {
             )}
           </div>
 
-          {/* ---------- Info ---------- */}
+          {/* ---------- Product Info ---------- */}
           <div className="flex min-w-0 flex-col md:sticky md:top-24">
             <h1
               data-aos="fade-up"
@@ -446,6 +474,7 @@ export default function ProductDetails() {
                   {!outOfStock && (
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60" />
                   )}
+
                   <span
                     className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
                       outOfStock ? "bg-red-500" : "bg-green-600"
@@ -482,9 +511,22 @@ export default function ProductDetails() {
               )}
             </div>
 
-            {/* Quantity */}
+            {/* ---------- Estimated Delivery Checker ---------- */}
+            <div
+              data-aos="fade-up"
+              data-aos-delay="180"
+              className="mt-6 w-full min-w-0"
+            >
+              <DeliveryChecker />
+            </div>
+
+            {/* ---------- Quantity ---------- */}
             {!outOfStock && (
-              <div data-aos="fade-up" data-aos-delay="200" className="mt-7">
+              <div
+                data-aos="fade-up"
+                data-aos-delay="200"
+                className="mt-7"
+              >
                 <label className="mb-3 block text-xs font-semibold uppercase tracking-widest text-neutral-500">
                   Quantity
                 </label>
@@ -492,7 +534,9 @@ export default function ProductDetails() {
                 <div className="inline-flex items-center rounded-full border border-neutral-300 bg-white p-1 shadow-sm">
                   <button
                     type="button"
-                    onClick={() => setQuantity((c) => Math.max(1, c - 1))}
+                    onClick={() =>
+                      setQuantity((c) => Math.max(1, c - 1))
+                    }
                     disabled={quantity <= 1}
                     aria-label="Decrease quantity"
                     className="flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-neutral-100 active:scale-90 disabled:cursor-not-allowed disabled:opacity-30"
@@ -511,7 +555,9 @@ export default function ProductDetails() {
                   <button
                     type="button"
                     onClick={() =>
-                      setQuantity((c) => Math.min(Number(product.stock), c + 1))
+                      setQuantity((c) =>
+                        Math.min(Number(product.stock), c + 1)
+                      )
                     }
                     disabled={quantity >= Number(product.stock)}
                     aria-label="Increase quantity"
@@ -527,8 +573,11 @@ export default function ProductDetails() {
               </div>
             )}
 
-            {/* CTA */}
-            <div data-aos="fade-up" data-aos-delay="250">
+            {/* ---------- Add to Cart ---------- */}
+            <div
+              data-aos="fade-up"
+              data-aos-delay="250"
+            >
               <button
                 type="button"
                 onClick={handleAddToCart}
@@ -554,7 +603,10 @@ export default function ProductDetails() {
                         className="transition-transform group-hover:-translate-y-0.5"
                       />
                     )}
-                    {outOfStock ? "Currently unavailable" : "Add to cart"}
+
+                    {outOfStock
+                      ? "Currently unavailable"
+                      : "Add to cart"}
                   </>
                 )}
               </button>
@@ -572,7 +624,7 @@ export default function ProductDetails() {
               </Link>
             </div>
 
-            {/* Trust badges */}
+            {/* ---------- Trust Badges ---------- */}
             <div
               data-aos="fade-up"
               data-aos-delay="300"
@@ -586,6 +638,7 @@ export default function ProductDetails() {
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 transition group-hover:bg-neutral-950 group-hover:text-white">
                     <Icon size={16} />
                   </span>
+
                   <div className="min-w-0">
                     <p className="text-xs font-semibold">{title}</p>
                     <p className="mt-0.5 text-[11px] leading-4 text-neutral-500">
@@ -596,7 +649,7 @@ export default function ProductDetails() {
               ))}
             </div>
 
-            {/* Accordion */}
+            {/* ---------- Accordion ---------- */}
             <div
               data-aos="fade-up"
               data-aos-delay="350"
@@ -604,6 +657,7 @@ export default function ProductDetails() {
             >
               {panels.map(({ key, icon: Icon, title, body }) => {
                 const open = openPanel === key;
+
                 return (
                   <div key={key}>
                     <button
@@ -616,6 +670,7 @@ export default function ProductDetails() {
                         <Icon size={16} className="text-neutral-500" />
                         {title}
                       </span>
+
                       <FiChevronDown
                         size={16}
                         className={`text-neutral-500 transition-transform duration-300 ${
@@ -626,7 +681,9 @@ export default function ProductDetails() {
 
                     <div
                       className={`grid transition-all duration-300 ease-out ${
-                        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                        open
+                          ? "grid-rows-[1fr]"
+                          : "grid-rows-[0fr]"
                       }`}
                     >
                       <div className="overflow-hidden">
@@ -654,13 +711,14 @@ export default function ProductDetails() {
         </div>
       </section>
 
-      {/* Mobile sticky bar */}
+      {/* ---------- Mobile Sticky Cart Bar ---------- */}
       {!outOfStock && (
         <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-4 border-t border-neutral-200 bg-white/95 px-5 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.06)] backdrop-blur md:hidden">
           <div className="min-w-0">
             <p className="truncate text-xs text-neutral-500">
               {product.productName}
             </p>
+
             <p className="text-base font-semibold">
               {formatPrice(Number(product.price) * quantity)}
             </p>
@@ -673,7 +731,12 @@ export default function ProductDetails() {
               added ? "bg-green-700" : "bg-neutral-950"
             }`}
           >
-            {added ? <FiCheck size={16} /> : <FiShoppingCart size={16} />}
+            {added ? (
+              <FiCheck size={16} />
+            ) : (
+              <FiShoppingCart size={16} />
+            )}
+
             {added ? "Added" : "Add"}
           </button>
         </div>
