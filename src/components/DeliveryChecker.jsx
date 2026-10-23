@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import {
   FiPackage,
@@ -9,29 +8,11 @@ import {
 import api from "../services/api";
 
 const DELIVERY_PINCODE_KEY = "deliveryPincode";
+const DELIVERY_DETAILS_KEY = "deliveryDetails";
 const DELIVERY_EVENT = "deliveryPincodeChanged";
-const DELIVERY_CUTOFF_HOUR = 16;
+const DELIVERY_CUTOFF_HOUR = 16; // 4 PM IST
 
-// Demo fallback cities.
-// Add more pincodes here when needed.
-const PINCODE_LOCATIONS = {
-  "612001": "Kumbakonam",
-  "612002": "Kumbakonam",
-  "612101": "Kumbakonam",
-  "613001": "Thanjavur",
-  "613002": "Thanjavur",
-  "620001": "Tiruchirappalli",
-  "620002": "Tiruchirappalli",
-  "638001": "Erode",
-  "638002": "Erode",
-  "625001": "Madurai",
-  "600001": "Chennai",
-  "600002": "Chennai",
-  "600028": "Chennai",
-  "641001": "Coimbatore",
-  "641002": "Coimbatore",
-};
-
+// Safely read the saved pincode.
 function getStoredPincode() {
   try {
     return localStorage.getItem(DELIVERY_PINCODE_KEY) || "";
@@ -40,7 +21,17 @@ function getStoredPincode() {
   }
 }
 
-// Current date/time in India.
+// Safely read the complete saved delivery details.
+function getStoredDelivery() {
+  try {
+    const saved = localStorage.getItem(DELIVERY_DETAILS_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Get the current date and time in India.
 function getIndiaParts(timestamp = Date.now()) {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Kolkata",
@@ -93,18 +84,18 @@ function getCountdown(now) {
   };
 }
 
-// Format YYYY-MM-DD without changing its calendar day.
+// Format an arrival date without changing the calendar day.
 function formatArrivalDate(value) {
   if (!value) return "";
 
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(
     String(value)
   );
 
   let date;
 
-  if (dateOnly) {
-    const [, year, month, day] = dateOnly;
+  if (match) {
+    const [, year, month, day] = match;
 
     date = new Date(
       Number(year),
@@ -117,72 +108,154 @@ function formatArrivalDate(value) {
   }
 
   if (Number.isNaN(date.getTime())) {
-    return String(value);
+    return "";
   }
 
   return date.toLocaleDateString("en-IN", {
-    ...(dateOnly ? {} : { timeZone: "Asia/Kolkata" }),
     weekday: "short",
     month: "short",
     day: "numeric",
   });
 }
 
-// Demo arrival estimate: three calendar days from today.
-function getDemoArrivalDate(now) {
-  const india = getIndiaParts(now);
+// Free Indian Postal Pincode API.
+// The district is preferred for the displayed destination.
+async function getIndianPincodeDetails(pincode) {
+  try {
+    const response = await fetch(
+      `https://api.postalpincode.in/pincode/${encodeURIComponent(
+        pincode
+      )}`
+    );
 
-  const date = new Date(
-    Date.UTC(
-      Number(india.year),
-      Number(india.month) - 1,
-      Number(india.day) + 3,
-      12
-    )
-  );
+    if (!response.ok) {
+      return null;
+    }
 
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
+    const data = await response.json();
 
-  return formatArrivalDate(`${year}-${month}-${day}`);
+    if (
+      !Array.isArray(data) ||
+      data[0]?.Status !== "Success" ||
+      !Array.isArray(data[0]?.PostOffice) ||
+      data[0].PostOffice.length === 0
+    ) {
+      return null;
+    }
+
+    const offices = data[0].PostOffice;
+
+    // Prefer a useful district/city and state from the postal records.
+    const office =
+      offices.find(
+        (item) =>
+          item?.District &&
+          item?.State &&
+          item?.District.trim()
+      ) || offices[0];
+
+    return {
+      city:
+        office?.District?.trim() ||
+        office?.Name?.trim() ||
+        "",
+      state: office?.State?.trim() || "",
+      areaName: office?.Name?.trim() || "",
+    };
+  } catch (error) {
+    // A postal API failure must not break the demo delivery checker.
+    console.error("Indian pincode lookup failed:", error);
+    return null;
+  }
 }
 
-// Get city from API first, then use the demo mapping.
+// Fetch demo delivery estimate and postal location together.
+async function fetchDeliveryDetails(pincode) {
+  const [deliveryResponse, postalDetails] = await Promise.all([
+    api.get(`/delivery/check/${pincode}`),
+    getIndianPincodeDetails(pincode),
+  ]);
 
-function getDeliveryCity(delivery) {
-  const candidates = [
-    delivery?.city,
-    delivery?.district,
-    delivery?.cityName,
-    delivery?.destinationCity,
-    delivery?.location?.city,
-    delivery?.address?.city,
-  ];
+  const data = deliveryResponse.data;
 
-  const city = candidates.find(
-    (value) =>
-      typeof value === "string" &&
-      value.trim().length > 0
-  );
+  if (data?.success === false) {
+    throw new Error(
+      data.message || "Unable to check delivery."
+    );
+  }
 
-  return city ? city.trim() : "";
+  const result = data?.delivery || data;
+
+  if (
+    result?.serviceable === false ||
+    result?.available === false
+  ) {
+    throw new Error(
+      result?.message ||
+        "Delivery is unavailable for this pincode."
+    );
+  }
+
+  // Postal API district is preferred because it reliably identifies
+  // the district associated with the entered Indian pincode.
+  const city =
+    postalDetails?.city ||
+    result?.city ||
+    result?.district ||
+    result?.cityName ||
+    result?.destinationCity ||
+    result?.location?.city ||
+    result?.address?.city ||
+    "";
+
+  const state =
+    postalDetails?.state ||
+    result?.state ||
+    result?.stateName ||
+    "";
+
+  return {
+    ...result,
+    pincode,
+    city,
+    state,
+    areaName:
+      postalDetails?.areaName ||
+      result?.areaName ||
+      "",
+  };
 }
 
+// Save all details so they survive page refreshes.
+function saveDeliveryDetails(pincode, details) {
+  try {
+    localStorage.setItem(DELIVERY_PINCODE_KEY, pincode);
+    localStorage.setItem(
+      DELIVERY_DETAILS_KEY,
+      JSON.stringify(details)
+    );
+  } catch (error) {
+    console.error("Unable to save delivery details:", error);
+  }
+}
 
 function DeliveryChecker() {
   const [pincode, setPincode] = useState(getStoredPincode);
   const [inputPincode, setInputPincode] = useState(
     getStoredPincode
   );
+
+  const [delivery, setDelivery] = useState(getStoredDelivery);
+
   const [isEditing, setIsEditing] = useState(
     () => !getStoredPincode()
   );
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [delivery, setDelivery] = useState(null);
   const [now, setNow] = useState(Date.now());
 
+  // Update the countdown every second.
   useEffect(() => {
     const timer = window.setInterval(() => {
       setNow(Date.now());
@@ -191,69 +264,60 @@ function DeliveryChecker() {
     return () => window.clearInterval(timer);
   }, []);
 
-  // Load the saved pincode's delivery estimate.
+  // Restore cached city/state immediately, then refresh the estimate.
+  // This prevents the location disappearing when the page is refreshed.
   useEffect(() => {
-    const saved = getStoredPincode();
+    const savedPincode = getStoredPincode();
+    const savedDelivery = getStoredDelivery();
 
-    if (!saved) return;
+    if (!savedPincode) return;
+
+    if (savedDelivery) {
+      setPincode(savedPincode);
+      setInputPincode(savedPincode);
+      setDelivery(savedDelivery);
+      setIsEditing(false);
+    }
 
     let cancelled = false;
 
-    async function loadSavedPincode() {
+    async function refreshSavedDelivery() {
       try {
-        setLoading(true);
-        setError("");
-
-        const { data } = await api.get(
-          `/delivery/check/${saved}`
-        );
-
-        if (data?.success === false) {
-          throw new Error(
-            data.message || "Unable to check delivery."
-          );
-        }
-
-        const result = data?.delivery || data;
-
-        if (
-          result?.serviceable === false ||
-          result?.available === false
-        ) {
-          throw new Error(
-            result?.message ||
-              "Delivery is unavailable for this pincode."
-          );
-        }
+        const details = await fetchDeliveryDetails(savedPincode);
 
         if (cancelled) return;
 
-        setDelivery(result);
-        setPincode(saved);
-        setInputPincode(saved);
+        saveDeliveryDetails(savedPincode, details);
+        setPincode(savedPincode);
+        setInputPincode(savedPincode);
+        setDelivery(details);
         setIsEditing(false);
+        setError("");
       } catch (err) {
         if (cancelled) return;
 
-        setDelivery(null);
-        setError(
-          err.response?.data?.message ||
-            err.message ||
-            "Unable to load delivery estimate."
-        );
-        setIsEditing(true);
-      } finally {
-        if (!cancelled) setLoading(false);
+        // Keep the previously saved location if the API is temporarily
+        // unavailable. Only show the form when there is no cached data.
+        if (!savedDelivery) {
+          setDelivery(null);
+          setError(
+            err.response?.data?.message ||
+              err.message ||
+              "Unable to load delivery details."
+          );
+          setIsEditing(true);
+        }
       }
     }
 
-    loadSavedPincode();
+    refreshSavedDelivery();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // Check a newly entered pincode.
   const handleCheck = async (event) => {
     event.preventDefault();
 
@@ -268,40 +332,22 @@ function DeliveryChecker() {
       setLoading(true);
       setError("");
 
-      const { data } = await api.get(
-        `/delivery/check/${value}`
-      );
+      const details = await fetchDeliveryDetails(value);
 
-      if (data?.success === false) {
-        throw new Error(
-          data.message || "Unable to check delivery."
-        );
-      }
-
-      const result = data?.delivery || data;
-
-      if (
-        result?.serviceable === false ||
-        result?.available === false
-      ) {
-        setDelivery(null);
-        setError(
-          result?.message ||
-            "Delivery is unavailable for this pincode."
-        );
-        return;
-      }
-
-      localStorage.setItem(DELIVERY_PINCODE_KEY, value);
+      saveDeliveryDetails(value, details);
 
       setPincode(value);
       setInputPincode(value);
-      setDelivery(result);
+      setDelivery(details);
       setIsEditing(false);
 
       window.dispatchEvent(
         new CustomEvent(DELIVERY_EVENT, {
-          detail: { pincode: value },
+          detail: {
+            pincode: value,
+            city: details.city,
+            state: details.state,
+          },
         })
       );
     } catch (err) {
@@ -323,19 +369,51 @@ function DeliveryChecker() {
 
   const countdown = getCountdown(now);
 
-  const arrivalLabel = delivery
-    ? delivery.estimatedDateText ||
-      formatArrivalDate(
-        delivery.estimatedDeliveryDate ||
-          delivery.estimatedDate
-      ) ||
-      getDemoArrivalDate(now)
-    : "";
+  // Prefer the backend's earliest estimated delivery date.
+  // Use a three-day demo estimate only when the backend has no date.
+  const arrivalLabel = (() => {
+    const dateValue =
+      delivery?.estimatedDeliveryDate ||
+      delivery?.estimatedDate;
 
-  const city = getDeliveryCity(delivery);
+    if (dateValue) {
+      const formatted = formatArrivalDate(dateValue);
 
-  // Expected display: Thanjavur – 613001
-  const location = [city, pincode]
+      if (formatted) return formatted;
+    }
+
+    if (delivery?.estimatedDateText) {
+      return delivery.estimatedDateText;
+    }
+
+    const india = getIndiaParts(now);
+
+    const fallback = new Date(
+      Date.UTC(
+        Number(india.year),
+        Number(india.month) - 1,
+        Number(india.day) + 3,
+        12
+      )
+    );
+
+    return formatArrivalDate(
+      `${fallback.getUTCFullYear()}-${String(
+        fallback.getUTCMonth() + 1
+      ).padStart(2, "0")}-${String(
+        fallback.getUTCDate()
+      ).padStart(2, "0")}`
+    );
+  })();
+
+  // Expected format: "Deliver to Thanjavur – 612001".
+  const city = delivery?.city?.trim() || "";
+  const state = delivery?.state?.trim() || "";
+
+  const location = [
+    city,
+    pincode,
+  ]
     .filter(Boolean)
     .join(" – ");
 
@@ -378,25 +456,28 @@ function DeliveryChecker() {
           </div>
 
           {error && (
-            <p role="alert" className="mt-2 text-xs text-red-600">
+            <p
+              role="alert"
+              className="mt-2 text-xs text-red-600"
+            >
               {error}
             </p>
           )}
         </form>
       ) : (
         <div className="px-3 pb-3 pt-2">
-          {/* Arrival date and live countdown */}
+          {/* Estimated date and countdown */}
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <p
               className="text-sm font-semibold text-[#8ba43e]"
               aria-live="polite"
             >
-              Arrives by {arrivalLabel || getDemoArrivalDate(now)}
+              Arrives by {arrivalLabel}
             </p>
 
             <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-orange-50 px-2 py-1.5 text-[10px] text-orange-700 sm:text-[11px]">
               <FiClock size={12} />
-              <span>Order within</span>
+              <span>Order within:</span>
               <strong>
                 {countdown.hours}h {countdown.minutes}m{" "}
                 {countdown.seconds}s
@@ -404,7 +485,7 @@ function DeliveryChecker() {
             </span>
           </div>
 
-          {/* City and pincode */}
+          {/* Destination: city and pincode */}
           <div className="mt-2 flex items-center gap-2 text-xs text-neutral-600">
             <FiMapPin
               size={14}
@@ -429,7 +510,10 @@ function DeliveryChecker() {
           </div>
 
           {error && (
-            <p role="alert" className="mt-2 text-xs text-red-600">
+            <p
+              role="alert"
+              className="mt-2 text-xs text-red-600"
+            >
               {error}
             </p>
           )}

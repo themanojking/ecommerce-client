@@ -19,6 +19,7 @@ import {
 } from "../redux/slices/cartSlice";
 import toast from "react-hot-toast";
 import api from "../services/api";
+import DeliveryChecker from "../components/DeliveryChecker";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop&q=80";
@@ -447,6 +448,15 @@ export default function Cart() {
                       : formatPrice(shippingAmount)}
                 </span>
               </div>
+            </div>
+
+            {/* Shared delivery checker used on Product Details as well */}
+            <div
+              data-aos="fade-up"
+              data-aos-delay="125"
+              className="my-5 min-w-0 border-y border-neutral-200 py-5"
+            >
+              <DeliveryChecker />
             </div>
 
             <div className="my-6 border-t border-neutral-200" />
